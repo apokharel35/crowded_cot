@@ -85,6 +85,10 @@ def compute_positioning_metrics(
     work["lf_net_pct_oi"] = 100.0 * (
         (work["lev_fund_long"] - work["lev_fund_short"]) / oi
     )
+    # new groups
+    work["di_net_pct_oi"] = 100.0 * ((work["dealer_long"]      - work["dealer_short"])      / oi)
+    work["or_net_pct_oi"] = 100.0 * ((work["other_rept_long"]  - work["other_rept_short"])  / oi)
+    work["nr_net_pct_oi"] = 100.0 * ((work["nonrept_long"]     - work["nonrept_short"])     / oi)
 
     # --- Rolling z-scores & percentile ranks per contract ---
     results = []
@@ -100,6 +104,21 @@ def compute_positioning_metrics(
         lf_mean, lf_std = _rolling_stats(g["lf_net_pct_oi"], lookback_weeks)
         g["lev_fund_z"] = (g["lf_net_pct_oi"] - lf_mean) / lf_std
         g["lev_fund_pct"] = _rolling_pct(g["lf_net_pct_oi"], lookback_weeks)
+
+        # Dealer/Intermediary (DI)
+        di_mean, di_std = _rolling_stats(g["di_net_pct_oi"], lookback_weeks)
+        g["dealer_z"] = (g["di_net_pct_oi"] - di_mean) / di_std
+        g["dealer_pct"] = _rolling_pct(g["di_net_pct_oi"], lookback_weeks)
+
+        # Other Reportables (OR)
+        or_mean, or_std = _rolling_stats(g["or_net_pct_oi"], lookback_weeks)
+        g["other_rep_z"] = (g["or_net_pct_oi"] - or_mean) / or_std
+        g["other_rep_pct"] = _rolling_pct(g["or_net_pct_oi"], lookback_weeks)
+
+        # Non-Reportables (NR)
+        nr_mean, nr_std = _rolling_stats(g["nr_net_pct_oi"], lookback_weeks)
+        g["nonrept_z"] = (g["nr_net_pct_oi"] - nr_mean) / nr_std
+        g["nonrept_pct"] = _rolling_pct(g["nr_net_pct_oi"], lookback_weeks)        
 
         # --- Extreme flags (Jason Shapiro style thresholds) ---
         g["is_extreme_am_long"] = (g["asset_mgr_pct"] >= 90) | (g["asset_mgr_z"] >= threshold)
@@ -129,12 +148,24 @@ def compute_positioning_metrics(
         "asset_mgr_short",
         "lev_fund_long",
         "lev_fund_short",
+        #open-interest
         "am_net_pct_oi",
         "lf_net_pct_oi",
+        "di_net_pct_oi",""
+        "or_net_pct_oi",
+        "nr_net_pct_oi",
+        #z-scores
         "asset_mgr_z",
         "lev_fund_z",
+        "dealer_z",
+        "other_rep_z",
+        "nonrept_z",
+        #pct
         "asset_mgr_pct",
         "lev_fund_pct",
+        "dealer_pct",
+        "other_rep_pct",
+        "nonrept_pct",
         "is_extreme_am_long",
         "is_extreme_lev_short",
         "is_confirmed_extreme_am_long",

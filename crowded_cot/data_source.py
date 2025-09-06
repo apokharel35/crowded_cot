@@ -52,6 +52,13 @@ CFTC_COLUMN_MAP: Mapping[str, str] = {
     # Keep our internal key "lev_fund_*" but map to lev_money_* on Socrata
     "lev_fund_long": "lev_money_positions_long",
     "lev_fund_short": "lev_money_positions_short",
+    
+    "dealer_long": "dealer_positions_long_all",
+    "dealer_short": "dealer_positions_short_all",
+    "other_rept_long": "other_rept_positions_long",
+    "other_rept_short": "other_rept_positions_short",
+    "nonrept_long": "nonrept_positions_long_all",
+    "nonrept_short": "nonrept_positions_short_all",
 }
 
 
@@ -122,6 +129,12 @@ class CftcPRELoader(DataSource):
             "asset_mgr_short",
             "lev_fund_long",
             "lev_fund_short",
+            "dealer_long",
+            "dealer_short",
+            "other_rept_long",
+            "other_rept_short",
+            "nonrept_long",
+            "nonrept_short",
         ]
         for col in num_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")

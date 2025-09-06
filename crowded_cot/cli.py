@@ -41,13 +41,32 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--extreme-threshold",
         type=float,
         default=2.0,
-        help="Z-score threshold for extreme crowding (default: 2.0)",
+        help="Z-score threshold for extremes (default: 2.0)",
     )
     common.add_argument(
         "--lookback-weeks",
         type=int,
         default=260,
-        help="Rolling window length for z-scores/percentiles in weeks (default: 260 ≈ 5y)",
+        help="Rolling window for z-scores/percentiles (weeks, default: 260 ≈ 5y)",
+    )
+    # NEW: user-tunable crowding rules + confirmation window
+    common.add_argument(
+        "--am-long-pct",
+        type=float,
+        default=90.0,
+        help="Asset Managers crowded-long percentile threshold (default: 90)",
+    )
+    common.add_argument(
+        "--lf-short-pct",
+        type=float,
+        default=10.0,
+        help="Leveraged Funds crowded-short percentile threshold (default: 10)",
+    )
+    common.add_argument(
+        "--confirm-weeks",
+        type=int,
+        default=2,
+        help="Consecutive weeks required to confirm a signal (default: 2)",
     )
 
     sub = parser.add_subparsers(dest="source", required=True)
@@ -71,6 +90,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def _get(colname: str, row, default=None):
     """Safe access for optional columns."""
     return row[colname] if (colname in row and row[colname] is not None) else default
+
+
+def _bool(x) -> bool:
+    try:
+        return bool(x) if x is not None else False
+    except Exception:
+        return False
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -97,37 +123,85 @@ def main(argv: Iterable[str] | None = None) -> int:
         return 0
 
     latest_date = metrics["report_date"].max()
-    latest = metrics[metrics["report_date"] == latest_date]
     print(f"Latest report date: {latest_date}")
 
-    for contract, group in latest.groupby("contract"):
-        row = group.iloc[0]
+    # Use the full history to compute confirmation over N weeks per contract
+    by_contract = metrics.sort_values(["contract", "report_date"]).groupby("contract", sort=False)
 
-        # always available (from metrics.py)
-        am_z = _get("asset_mgr_z", row, float("nan"))
-        lf_z = _get("lev_fund_z", row, float("nan"))
+    for contract, g in by_contract:
+        # last row (today)
+        today = g.iloc[-1]
 
-        # optional percentile ranks (0–100); support either column naming
-        am_pct = _get("asset_mgr_pct", row, _get("asset_mgr_percentile", row))
-        lf_pct = _get("lev_fund_pct", row, _get("lev_fund_percentile", row))
+        am_z = float(_get("asset_mgr_z", today, float("nan")))
+        lf_z = float(_get("lev_fund_z", today, float("nan")))
+        am_pct = _get("asset_mgr_pct", today, None)
+        lf_pct = _get("lev_fund_pct", today, None)
+
+        # Human-friendly percentile strings
         am_pct_str = f"{am_pct:.0f}th" if am_pct is not None else "n/a"
         lf_pct_str = f"{lf_pct:.0f}th" if lf_pct is not None else "n/a"
 
-        # optional 2-week confirmation flags (bools)
-        am_conf = bool(_get("is_confirmed_extreme_am_long", row, False))
-        lf_conf = bool(_get("is_confirmed_extreme_lev_short", row, False))
+        # User-configurable extreme rules for today's bar
+        am_ext_today = (
+            (am_pct is not None and am_pct >= args.am_long_pct)
+            or (am_z >= args.extreme_threshold)
+        )
+        lf_ext_today = (
+            (lf_pct is not None and lf_pct <= args.lf_short_pct)
+            or (lf_z <= -args.extreme_threshold)
+        )
+
+        # N-week confirmation using today's thresholds
+        w = max(1, int(args.confirm_weeks))
+        tail = g.tail(w)
+
+        # Build series with the same rule over the tail window
+        am_series = (
+            ((tail["asset_mgr_pct"] >= args.am_long_pct) | (tail["asset_mgr_z"] >= args.extreme_threshold))
+            .fillna(False)
+            .astype(bool)
+        )
+        lf_series = (
+            ((tail["lev_fund_pct"] <= args.lf_short_pct) | (tail["lev_fund_z"] <= -args.extreme_threshold))
+            .fillna(False)
+            .astype(bool)
+        )
+        am_conf = bool(am_series.all()) if len(tail) == w else False
+        lf_conf = bool(lf_series.all()) if len(tail) == w else False
+
+        # Decide trade direction per your rules:
+        # LONG if LF crowded-short (confirmed); SHORT if AM crowded-long (confirmed)
+        trade = "NO"
+        reason = ""
+        if lf_conf and not am_conf:
+            trade = "YES (LONG)"
+            reason = f"LF extreme short confirmed {w}w"
+        elif am_conf and not lf_conf:
+            trade = "YES (SHORT)"
+            reason = f"AM extreme long confirmed {w}w"
+        elif am_conf and lf_conf:
+            trade = "YES (CONFLICT)"
+            reason = f"Both extremes confirmed {w}w (review manually)"
+
+        # Main summary line with user thresholds and confirmation outcome
+
+        di_z = today.get("dealer_z", None);     di_pct = today.get("dealer_pct", None)
+        or_z = today.get("other_rep_z", None);  or_pct = today.get("other_rep_pct", None)
+        nr_z = today.get("nonrept_z", None);    nr_pct = today.get("nonrept_pct", None)
+        def fmt(z,p):
+            zs = f"{z:+.2f}" if z is not None else "n/a"
+            ps = f"{p:.0f}th" if p is not None else "n/a"
+            return f"{zs} (pct {ps})"
 
         summary = (
             f"{contract}: "
-            f"AM z={am_z:+.2f} (pct {am_pct_str}, confirmed {am_conf}); "
-            f"LF z={lf_z:+.2f} (pct {lf_pct_str}, confirmed {lf_conf})"
+            f"AM {fmt(am_z, am_pct)}, LF {fmt(lf_z, lf_pct)}; "
+            f"DI {fmt(di_z, di_pct)}, OR {fmt(or_z, or_pct)}, NR {fmt(nr_z, nr_pct)}; "
+            f"conf{w}w AM={am_conf} LF={lf_conf}"
         )
 
-        # keep legacy aggregate flag if present
-        if bool(_get("extreme_crowding", row, False)):
-            summary += " **EXTREME**"
-
         print(summary)
+        print(f"  TRADE: {trade}" + (f" — {reason}" if reason else ""))
 
     return 0
 

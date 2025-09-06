@@ -48,6 +48,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="source", required=True)
 
     cftc = sub.add_parser("cftc", parents=[common], help="Load data from the CFTC PRE API")
+    
     cftc.add_argument("--start-date", required=True, help="YYYY-MM-DD")
     cftc.add_argument("--end-date", help="YYYY-MM-DD")
     cftc.add_argument("--api-token", help="Socrata API token")
@@ -57,9 +58,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Key in DATASET_IDS or explicit dataset id",
     )
 
-    csv = sub.add_parser("csv", parents=[common], help="Load data from local CSV files")
+    csv = sub.add_parser("csv", help="Load data from local CSV files")
     csv.add_argument("--path", nargs="+", required=True, help="File paths or globs")
 
+    parser.add_argument("--output-csv", help="Write tidy CSV to this path")
+    parser.add_argument("--output-json", help="Write tidy JSON to this path")
+    parser.add_argument(
+        "--extreme-threshold",
+        type=float,
+        default=2.0,
+        help="Z-score threshold for extreme crowding",
+    )
     return parser
 
 

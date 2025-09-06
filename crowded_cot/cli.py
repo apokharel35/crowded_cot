@@ -34,9 +34,21 @@ def _build_loader(args: argparse.Namespace) -> DataSource:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--output-csv", help="Write tidy CSV to this path")
+    common.add_argument("--output-json", help="Write tidy JSON to this path")
+    common.add_argument(
+        "--extreme-threshold",
+        type=float,
+        default=2.0,
+        help="Z-score threshold for extreme crowding",
+    )
+
     sub = parser.add_subparsers(dest="source", required=True)
 
-    cftc = sub.add_parser("cftc", help="Load data from the CFTC PRE API")
+    cftc = sub.add_parser("cftc", parents=[common], help="Load data from the CFTC PRE API")
+    
     cftc.add_argument("--start-date", required=True, help="YYYY-MM-DD")
     cftc.add_argument("--end-date", help="YYYY-MM-DD")
     cftc.add_argument("--api-token", help="Socrata API token")

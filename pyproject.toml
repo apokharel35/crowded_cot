@@ -1,0 +1,14 @@
+[project]
+name = "crowded-cot"
+version = "0.1.0"
+description = "Crowded positioning analysis for CFTC TFF data"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "pandas",
+    "requests",
+]
+
+[project.scripts]
+crowded-cot = "crowded_cot.cli:main"

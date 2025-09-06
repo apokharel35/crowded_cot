@@ -24,27 +24,36 @@ class DataSource(abc.ABC):
 # Mapping of logical dataset names to Socrata identifiers.  Users can modify
 # this dictionary to point at alternative datasets if desired.
 DATASET_IDS: Mapping[str, str] = {
-    "TFF_COMBINED": "6p9r-dwsc",  # default Futures + Options Combined dataset
+    "TFF_COMBINED": "gpe5-46if",  # default Futures + Options Combined dataset
 }
 
-# Market name filters for contracts.  CFTC market names are inconsistent, so we
-# match against any of the provided aliases.
 MARKET_ALIASES: Mapping[str, List[str]] = {
-    "ES": ["E-mini S&P 500", "S&P 500 E-mini"],
-    "NQ": ["E-mini NASDAQ-100", "NASDAQ-100 E-mini"],
+    "ES": ["E-MINI S&P 500", "S&P 500 E-MINI"],
+    "NQ": [
+        "E-MINI NASDAQ-100",   # hyphen
+        "NASDAQ-100 E-MINI",   # hyphen reversed
+        "E-MINI NASDAQ 100",   # space
+        "NASDAQ 100 E-MINI",   # space reversed
+    ],
 }
 
-# Columns fetched from the CFTC dataset.  Keys are the column names expected in
-# the returned dataframe, values are the column names in the Socrata dataset.
+
+# Columns fetched from the CFTC dataset. Keys = our internal names,
+# values = exact Socrata field names on the TFF datasets.
 CFTC_COLUMN_MAP: Mapping[str, str] = {
-    "report_date": "as_of_date_in_form_yyyymmdd",
-    "market_name": "market_and_exchange_names",
+    # Date (Floating Timestamp on Socrata)
+    "report_date": "report_date_as_yyyy_mm_dd",
+    # Clean product name (no exchange suffix) — lets our alias filter match
+    "market_name": "contract_market_name",
     "open_interest": "open_interest_all",
-    "asset_mgr_long": "asset_mgr_long_all",
-    "asset_mgr_short": "asset_mgr_short_all",
-    "lev_fund_long": "lev_fund_long_all",
-    "lev_fund_short": "lev_fund_short_all",
+    # Position fields use "*_positions_*" on TFF datasets
+    "asset_mgr_long": "asset_mgr_positions_long",
+    "asset_mgr_short": "asset_mgr_positions_short",
+    # Keep our internal key "lev_fund_*" but map to lev_money_* on Socrata
+    "lev_fund_long": "lev_money_positions_long",
+    "lev_fund_short": "lev_money_positions_short",
 }
+
 
 
 @dataclass
@@ -74,15 +83,17 @@ class CftcPRELoader(DataSource):
                 f"{CFTC_COLUMN_MAP['report_date']} <= '{self.end_date.isoformat()}'"
             )
 
-        # Market name filters
-        market_filters: List[str] = []
-        for aliases in MARKET_ALIASES.values():
-            joined = ",".join(f"'{a}'" for a in aliases)
-            market_filters.append(
-                f"upper({CFTC_COLUMN_MAP['market_name']}) in (" +
-                ",".join(f"'{a.upper()}'" for a in aliases) + ")"
-            )
-        where_clauses.append("(" + " OR ".join(market_filters) + ")")
+        # Market name filters (catch hyphen/space + both word orders)
+        market_filter = (
+            " ("
+            "  upper(contract_market_name) like '%E-MINI%S%P%500%'"
+            "  OR ("
+            "       upper(contract_market_name) like '%E-MINI%NASDAQ%100%'"
+            "       OR upper(contract_market_name) like '%NASDAQ%100%E-MINI%'"
+            "     )"
+            " ) "
+        )
+        where_clauses.append(market_filter)
 
         params = {
             "$select": select_clause,
@@ -117,10 +128,11 @@ class CftcPRELoader(DataSource):
 
         # Map market names to contract codes
         def _contract(name: str) -> Optional[str]:
-            name_upper = name.upper()
+            name_upper = str(name).upper()
             for code, aliases in MARKET_ALIASES.items():
-                if any(name_upper == a.upper() for a in aliases):
-                    return code
+                for alias in aliases:
+                    if alias.upper() in name_upper:
+                        return code
             return None
 
         df["contract"] = df["market_name"].apply(_contract)

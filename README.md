@@ -347,6 +347,20 @@ crowded-cot cftc --start-date 2020-01-01   --lookback-weeks 156 --am-long-pct 85
 crowded-cot cftc --start-date 2018-01-01   --am-long-pct 95 --lf-short-pct 5 --extreme-threshold 2.5 --confirm-weeks 3   --output-csv out/strict.csv   --output-json out/strict.json
 ```
 
+# with lookback periods and minimum required weeks
+
+```bash
+# Keep long window but relax the min so z-scores appear with short histories:
+crowded-cot cftc --start-date 2025-01-01 \
+  --lookback-weeks 260 --min-required-weeks 26 \
+  --output-csv out/es_nq_short.csv --output-json out/es_nq_short.json
+
+# Or pair a shorter window with a matching minimum:
+crowded-cot cftc --start-date 2025-01-01 \
+  --lookback-weeks 52 --min-required-weeks 26 \
+  --output-csv out/es_nq_52w.csv --output-json out/es_nq_52w.json
+```
+** Tip: very small min_required_weeks (e.g., < 20) will produce noisy z-scores. For short runs, 26–52 weeks is a reasonable lower bound.
 ---
 
 ## Troubleshooting
@@ -421,5 +435,5 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-  
+
 - PRs welcome for: more markets, richer summaries, charts, and integrated “news-failure” detection helpers.

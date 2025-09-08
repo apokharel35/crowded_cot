@@ -7,7 +7,7 @@ import pandas as pd
 
 
 LOOKBACK_WEEKS_DEFAULT = 260  # ~5 years
-MIN_REQUIRED_WEEKS = 156      # allow z-scores with ≥3y of data to avoid NaNs
+MIN_REQUIRED_WEEKS = 156      # default minimum history for z-scores (~3y
 
 
 def _percentile_rank_inc(window_vals: np.ndarray, x: float) -> float:
@@ -44,6 +44,7 @@ def compute_positioning_metrics(
     df: pd.DataFrame,
     threshold: float = 2.0,
     lookback_weeks: int = LOOKBACK_WEEKS_DEFAULT,
+    min_required_weeks: int = MIN_REQUIRED_WEEKS,
 ) -> pd.DataFrame:
     """
     Input dataframe must contain at least:
@@ -96,14 +97,28 @@ def compute_positioning_metrics(
         g = g.copy()
 
         # Asset Managers
-        am_mean, am_std = _rolling_stats(g["am_net_pct_oi"], lookback_weeks)
+        am_mean, am_std = _rolling_stats(g["am_net_pct_oi"], lookback_weeks, min_required_weeks)
         g["asset_mgr_z"] = (g["am_net_pct_oi"] - am_mean) / am_std
         g["asset_mgr_pct"] = _rolling_pct(g["am_net_pct_oi"], lookback_weeks)
 
         # Leveraged Funds
-        lf_mean, lf_std = _rolling_stats(g["lf_net_pct_oi"], lookback_weeks)
+        lf_mean, lf_std = _rolling_stats(g["lf_net_pct_oi"], lookback_weeks, min_required_weeks)
         g["lev_fund_z"] = (g["lf_net_pct_oi"] - lf_mean) / lf_std
         g["lev_fund_pct"] = _rolling_pct(g["lf_net_pct_oi"], lookback_weeks)
+
+        # If you compute extra groups (Dealer/Other/Nonrep), also pass min_required_weeks:
+        if "di_net_pct_oi" in g:
+            di_mean, di_std = _rolling_stats(g["di_net_pct_oi"], lookback_weeks, min_required_weeks)
+            g["dealer_z"] = (g["di_net_pct_oi"] - di_mean) / di_std
+            g["dealer_pct"] = _rolling_pct(g["di_net_pct_oi"], lookback_weeks)
+        if "or_net_pct_oi" in g:
+            or_mean, or_std = _rolling_stats(g["or_net_pct_oi"], lookback_weeks, min_required_weeks)
+            g["other_rep_z"] = (g["or_net_pct_oi"] - or_mean) / or_std
+            g["other_rep_pct"] = _rolling_pct(g["or_net_pct_oi"], lookback_weeks)
+        if "nr_net_pct_oi" in g:
+            nr_mean, nr_std = _rolling_stats(g["nr_net_pct_oi"], lookback_weeks, min_required_weeks)
+            g["nonrept_z"] = (g["nr_net_pct_oi"] - nr_mean) / nr_std
+            g["nonrept_pct"] = _rolling_pct(g["nr_net_pct_oi"], lookback_weeks)
 
         # Dealer/Intermediary (DI)
         di_mean, di_std = _rolling_stats(g["di_net_pct_oi"], lookback_weeks)
@@ -120,7 +135,7 @@ def compute_positioning_metrics(
         g["nonrept_z"] = (g["nr_net_pct_oi"] - nr_mean) / nr_std
         g["nonrept_pct"] = _rolling_pct(g["nr_net_pct_oi"], lookback_weeks)        
 
-        # --- Extreme flags (Jason Shapiro style thresholds) ---
+        # --- Extreme flags ---
         g["is_extreme_am_long"] = (g["asset_mgr_pct"] >= 90) | (g["asset_mgr_z"] >= threshold)
         g["is_extreme_lev_short"] = (g["lev_fund_pct"] <= 10) | (g["lev_fund_z"] <= -threshold)
 

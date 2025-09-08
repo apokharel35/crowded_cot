@@ -49,6 +49,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=260,
         help="Rolling window for z-scores/percentiles (weeks, default: 260 ≈ 5y)",
     )
+    common.add_argument(
+        "--min-required-weeks",
+        type=int,
+        default=156,
+        help="Minimum history (weeks) required to compute z-scores (default: 156 ≈ 3y). "
+             "Lower this to avoid NaN z-scores on short date ranges.",
+    )
+
     # NEW: user-tunable crowding rules + confirmation window
     common.add_argument(
         "--am-long-pct",
@@ -109,6 +117,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         df,
         threshold=args.extreme_threshold,
         lookback_weeks=args.lookback_weeks,
+        min_required_weeks=args.min_required_weeks,
     )
 
     if args.output_csv:
